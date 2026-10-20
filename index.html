@@ -287,7 +287,7 @@
     <div class="lbl" style="margin-top:8px">FALLS</div><div class="big" id="spiredeaths" style="font-size:20px">0</div>
   </div>
   <div id="spirebanner"><div class="main"></div><div class="sub"></div></div>
-  <div id="spirehint">WASD MOVE · SPACE JUMP · SHIFT SPRINT · REACH THE GOLD PAD</div>
+  <div id="spirehint">WASD MOVE · SPACE JUMP · SHIFT SPRINT · WALL RUN: JUMP ALONG A WALL, JUMP AGAIN TO LEAP OFF · REACH THE GOLD PAD</div>
 </div>
 
 <div id="startmenu" class="overlay">
@@ -307,6 +307,7 @@
     <b>FRAG</b><span>grenade</span>
     <b>TRT</b><span>deploy turret</span>
     <b>JUMP</b><span>jump</span>
+    <b>WALL RUN</b><span>jump by a wall, keep moving</span>
   </div>
   <div class="menubtns">
     <button class="bigbtn" id="arenabtn">ENTER THE ARENA</button>
@@ -518,6 +519,19 @@ function addCrate(x, z, w, h, dep){
   collidables.push(m);
   crates.push({ minx:x-w/2, maxx:x+w/2, minz:z-dep/2, maxz:z+dep/2, h:h });
 }
+/* ---------------- Elevated decks and bounce pads ---------------- */
+addCrate(-13, -13, 9, 3, 7);
+addCrate(14, 12, 9, 3, 7);
+var PADS = [ {x:-13, z:-6.5}, {x:14, z:5} ];
+PADS.forEach(function(pd){
+  crates.push({ minx:pd.x-1.1, maxx:pd.x+1.1, minz:pd.z-1.1, maxz:pd.z+1.1, h:0 });
+  var pm = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.3, 18),
+    new THREE.MeshStandardMaterial({ color:0x2a1a08, roughness:0.5, metalness:0.4,
+      emissive:0xff8c1a, emissiveIntensity:0.55 }));
+  pm.position.set(pd.x, 0.15, pd.z);
+  arenaGroup.add(pm);
+});
+
 (function scatterCrates(){
   var placed = 0, guard = 0;
   while(placed < 12 && guard < 200){
@@ -528,7 +542,7 @@ function addCrate(x, z, w, h, dep){
     for(var i=0;i<crates.length;i++){
       var c = crates[i];
       var cx = (c.minx+c.maxx)/2, cz = (c.minz+c.maxz)/2;
-      if(Math.hypot(x-cx, z-cz) < 5){ ok = false; break; }
+      if(Math.hypot(x-cx, z-cz) < 6.5){ ok = false; break; }
     }
     if(!ok) continue;
     addCrate(x, z, rand(1.6,3), rand(1.2,2.2), rand(1.6,3));
@@ -751,7 +765,8 @@ var player = {
   yaw:0, pitch:0,
   hp:100, maxHp:100,
   radius:0.55, eye:1.7,
-  bob:0
+  bob:0, grounded:true, tilt:0,
+  push:new THREE.Vector3()
 };
 
 /* ---------------- DOM refs ---------------- */
@@ -1500,7 +1515,15 @@ function updateEnemies(dt){
     if(d.type === 'mite' || d.type === 'minimite'){
       d.mesh.position.y = d.hover + Math.abs(Math.sin(d.bob * 1.6)) * 0.08;
     } else {
-      d.mesh.position.y = d.hover + Math.sin(d.bob) * 0.28;
+      var baseY = d.hover + Math.sin(d.bob) * 0.28;
+      for(var ci=0;ci<crates.length;ci++){
+        var cc = crates[ci];
+        if(cc.h >= 2 && d.mesh.position.x > cc.minx && d.mesh.position.x < cc.maxx &&
+           d.mesh.position.z > cc.minz && d.mesh.position.z < cc.maxz){
+          baseY = Math.max(baseY, cc.h + 1.1);
+        }
+      }
+      d.mesh.position.y = baseY;
     }
 
     if(d.type === 'wasp'){ updateWasp(d, dt); }
@@ -1689,7 +1712,7 @@ function deployTurret(){
   head.add(hbox); head.add(tip);
   head.position.y = 0.65;
   grp.add(base); grp.add(head);
-  grp.position.set(player.pos.x, 0, player.pos.z);
+  grp.position.set(player.pos.x, player.pos.y - player.eye, player.pos.z);
   scene.add(grp);
   G.turret = { mesh:grp, head:head, life:25, cool:0 };
   sfx.deploy();
@@ -1713,7 +1736,7 @@ function updateTurret(dt){
     t.head.rotation.y = Math.atan2(dx, dz);
     if(t.cool <= 0){
       t.cool = 0.45;
-      var fromPos = new THREE.Vector3(t.mesh.position.x, 0.7, t.mesh.position.z);
+      var fromPos = new THREE.Vector3(t.mesh.position.x, t.mesh.position.y + 0.7, t.mesh.position.z);
       var epos = best.mesh.position.clone();
       damageEnemy(best, 1, epos);
       spawnTracer(fromPos, epos, 0x7df9ff);
@@ -1749,6 +1772,14 @@ function spawnUplink(){
   var x = clamp(Math.cos(a)*r, -HALF+5, HALF-5);
   var z = clamp(Math.sin(a)*r, -HALF+5, HALF-5);
   if(Math.hypot(x - player.pos.x, z - player.pos.z) < 10){ x = -x; z = -z; }
+  var utries = 0;
+  while(pointInTallCrate(x, z) && utries < 8){
+    a = rand(0, Math.PI*2); r = rand(9, 22);
+    x = clamp(Math.cos(a)*r, -HALF+5, HALF-5);
+    z = clamp(Math.sin(a)*r, -HALF+5, HALF-5);
+    utries++;
+  }
+  if(pointInTallCrate(x, z)){ x = 0; z = -20; }
   uplink.pos.set(x, 0, z);
   uplink.progress = 0;
   uplink.tickMark = 0;
@@ -2293,6 +2324,8 @@ function initArenaRun(){
   player.pos.set(0, 1.7, 20);
   player.vel.set(0,0,0);
   player.yaw = 0; player.pitch = 0;
+  player.grounded = true;
+  player.push.set(0,0,0);
   player.maxHp = 100;
   player.hp = player.maxHp;
   uplink.active = false;
@@ -2323,6 +2356,9 @@ function beginRun(mode){
   bosswrap.style.display = 'none';
   G.state = 'playing';
   setTouchUIVisible(true);
+  player.tilt = 0;
+  wallRun.active = false; wallRun.seg = null; wallRun.t = 0;
+  player.push.set(0,0,0);
   if(G.mode === 'arena'){
     initArenaRun();
     startWave(1);
@@ -2360,7 +2396,7 @@ function die(){
 /* ---------------- THE SPIRE (platformer mode) ---------------- */
 var SP = { level:0, platforms:[], shards:[], deaths:0, time:0, collected:0, totalShards:0,
   respawn:new THREE.Vector3(), coyote:0, jumpBuf:0, grounded:false, standPlat:null,
-  respawnPlat:null, bannerT:0 };
+  respawnPlat:null, bannerT:0, walls:[] };
 
 // plat: [x, y(top surface), z, w, d, type, axis, range]
 // types: 0 static, 1 mover, 2 jump pad, 3 fade, 4 checkpoint, 5 goal
@@ -2391,14 +2427,26 @@ var SPIRE_LEVELS = [
     [4.5,1.2,-5, 3,3, 0],
     [4.5,2.4,-10, 2.5,2.5, 2],
     [0,6,-12, 3,3, 4],
+    [3.4,6,-17, 1,10, 6, 4],
     [-4,7,-16, 2.5,2.5, 3],
     [-4,8,-19, 2.5,2.5, 1, 'x', 2.5],
     [0,9,-22, 3,3, 2],
     [5,12.5,-24, 4,4, 5]
-  ], shards:[[4.5,3.6,-6],[-4,8.6,-16],[5,14,-24]] }
+  ], shards:[[4.5,3.6,-6],[-4,8.6,-16],[5,14,-24]] },
+  { name:'VERTIGO', plats:[
+    [0,0,0, 5,5, 0],
+    [0,1.0,-7, 3,3, 0],
+    [0,2.0,-12, 4,4, 0],
+    [3.2,2.0,-20, 1,14, 6, 5],
+    [-1,2.6,-29, 4,4, 4],
+    [-3.2,2.6,-38, 1,14, 6, 5],
+    [0,3.2,-48, 4,4, 0],
+    [0,3.2,-53, 3,3, 2],
+    [0,7.5,-57, 4,4, 5]
+  ], shards:[[2.2,4.2,-20],[-2.2,4.8,-38],[0,9.2,-57]] }
 ];
 
-var PLAT_EDGE = { 0:0x22d3ee, 1:0xff4fd8, 2:0xffb020, 3:0xc060ff, 4:0x39ff6a, 5:0xffd28a };
+var PLAT_EDGE = { 0:0x22d3ee, 1:0xff4fd8, 2:0xffb020, 3:0xc060ff, 4:0x39ff6a, 5:0xffd28a, 6:0xff8850 };
 function buildPlatMesh(type, w, d){
   var geo = new THREE.BoxGeometry(w, 0.5, d);
   var m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
@@ -2418,15 +2466,37 @@ function loadSpireLevel(idx){
   spireGroup.clear();
   SP.platforms.length = 0;
   SP.shards.length = 0;
+  SP.walls.length = 0;
   var L = SPIRE_LEVELS[idx];
   spirename.textContent = 'SECTOR ' + (idx + 1) + ': ' + L.name;
   L.plats.forEach(function(pd, pi){
     var x = pd[0], y = pd[1], z = pd[2], w = pd[3], d = pd[4], type = pd[5];
+    if(type === 6){
+      // wall panel: standable top, runnable long faces
+      var height = pd[6] || 4;
+      var wgeo = new THREE.BoxGeometry(w, height, d);
+      var wmesh = new THREE.Mesh(wgeo, new THREE.MeshStandardMaterial({
+        color:0x0d1526, roughness:0.6, metalness:0.4 }));
+      wmesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(wgeo),
+        new THREE.LineBasicMaterial({ color:PLAT_EDGE[6] })));
+      wmesh.position.set(x, y + height/2, z);
+      spireGroup.add(wmesh);
+      SP.platforms.push({ px:x, pz:z, y:y + height, hw:w/2, hd:d/2, type:0, mesh:wmesh,
+        axis:null, range:0, bx:x, bz:z, phase:0, dx:0, dz:0, solid:true, marker:null });
+      if(w > d){
+        SP.walls.push({ axis:'z', fixed:z - d/2 - 0.45, normal:-1, from:x - w/2, to:x + w/2, yBot:y, yTop:y + height });
+        SP.walls.push({ axis:'z', fixed:z + d/2 + 0.45, normal:1, from:x - w/2, to:x + w/2, yBot:y, yTop:y + height });
+      } else {
+        SP.walls.push({ axis:'x', fixed:x - w/2 - 0.45, normal:-1, from:z - d/2, to:z + d/2, yBot:y, yTop:y + height });
+        SP.walls.push({ axis:'x', fixed:x + w/2 + 0.45, normal:1, from:z - d/2, to:z + d/2, yBot:y, yTop:y + height });
+      }
+      return;
+    }
     var mesh = buildPlatMesh(type, w, d);
     mesh.position.set(x, y - 0.25, z);
     spireGroup.add(mesh);
     var plat = { px:x, pz:z, y:y, hw:w/2, hd:d/2, type:type, mesh:mesh,
-      axis:pd[6], range:pd[7] || 0, bx:x, bz:z, phase:Math.PI * 0.7, dx:0, dz:0, solid:true,
+      axis:pd[6], range:pd[7] || 0, bx:x, bz:z, phase:pi * 0.7, dx:0, dz:0, solid:true,
       marker:null };
     if(type === 4 || type === 5){
       var mk = new THREE.Mesh(new THREE.OctahedronGeometry(0.4),
@@ -2560,12 +2630,32 @@ function updateSpirePlayer(dt){
     player.pos.z += SP.standPlat.dz;
   }
 
-  player.vel.y -= 24 * dt;
+  // wall running on wall panels
+  if(wallRun.cool > 0) wallRun.cool -= dt;
+  if(!SP.grounded){
+    if(wallRun.active){
+      if(!segStillValid(wallRun.seg) || wallRun.t > 3.5){ wallRun.active = false; }
+      else { wallRun.t += dt; }
+    }
+    if(!wallRun.active && wallRun.cool <= 0 && player.vel.y < 3){
+      var wseg = findWallSeg(SP.walls);
+      if(wseg){ wallRun.active = true; wallRun.seg = wseg; wallRun.t = 0; }
+    }
+  } else { wallRun.active = false; }
+
+  var sgrav = wallRun.active ? 24 * 0.15 : 24;
+  player.vel.y -= sgrav * dt;
+  if(wallRun.active && player.vel.y < -1.2){ player.vel.y = -1.2; }
   if(player.vel.y < -30){ player.vel.y = -30; }
   var prevFeet = player.pos.y - player.eye;
   player.pos.x += player.vel.x * dt;
   player.pos.z += player.vel.z * dt;
   player.pos.y += player.vel.y * dt;
+
+  if(wallRun.active){
+    if(wallRun.seg.axis === 'x') player.pos.x = wallRun.seg.fixed;
+    else player.pos.z = wallRun.seg.fixed;
+  }
 
   var wasGrounded = SP.grounded;
   var fallSpeed = player.vel.y;
@@ -2579,6 +2669,7 @@ function updateSpirePlayer(dt){
          Math.abs(player.pos.z - p.pz) < p.hd + 0.32){
         if(prevFeet >= p.y - 0.3 && feet <= p.y + 0.1){
           player.pos.y = p.y + player.eye;
+          wallRun.active = false;
           if(p.type === 2){
             player.vel.y = 15;
             SP.standPlat = null;
@@ -2606,7 +2697,19 @@ function updateSpirePlayer(dt){
 
   if(SP.grounded){ SP.coyote = 0.12; } else { SP.coyote -= dt; }
   SP.jumpBuf -= dt;
-  if(SP.jumpBuf > 0 && (SP.grounded || SP.coyote > 0)){
+  if(SP.jumpBuf > 0 && wallRun.active){
+    // wall jump: leap away from the panel
+    if(wallRun.seg.axis === 'x') player.vel.x = wallRun.seg.normal * 8;
+    else player.vel.z = wallRun.seg.normal * 8;
+    player.vel.y = 9.8;
+    wallRun.active = false;
+    wallRun.cool = 0.3;
+    SP.grounded = false;
+    SP.standPlat = null;
+    SP.coyote = 0;
+    SP.jumpBuf = 0;
+    sfx.jump();
+  } else if(SP.jumpBuf > 0 && (SP.grounded || SP.coyote > 0)){
     player.vel.y = 9.5;
     SP.grounded = false;
     SP.standPlat = null;
@@ -2623,19 +2726,82 @@ function updateSpirePlayer(dt){
     player.vel.set(0,0,0);
     SP.jumpBuf = 0;
     SP.standPlat = null;
+    wallRun.active = false;
   }
+
+  var stiltT = wallRun.active ? wallTiltFor(wallRun.seg) : 0;
+  player.tilt += (stiltT - player.tilt) * clamp(dt * 10, 0, 1);
 
   camera.position.copy(player.pos);
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
-  camera.rotation.z = 0;
+  camera.rotation.z = player.tilt;
+}
+
+/* ---------------- Wall running (shared by arena and spire) ---------------- */
+var wallRun = { active:false, seg:null, t:0, cool:0 };
+var ARENA_WALLS = [
+  { axis:'x', fixed:-HALF+1, normal:1, from:-HALF, to:HALF, yBot:0, yTop:WALL_H },
+  { axis:'x', fixed: HALF-1, normal:-1, from:-HALF, to:HALF, yBot:0, yTop:WALL_H },
+  { axis:'z', fixed:-HALF+1, normal:1, from:-HALF, to:HALF, yBot:0, yTop:WALL_H },
+  { axis:'z', fixed: HALF-1, normal:-1, from:-HALF, to:HALF, yBot:0, yTop:WALL_H }
+];
+function findWallSeg(walls){
+  var feet = player.pos.y - player.eye;
+  if(Math.hypot(player.vel.x, player.vel.z) < 3.5) return null;
+  for(var i=0;i<walls.length;i++){
+    var s = walls[i];
+    var coord = (s.axis === 'x') ? player.pos.x : player.pos.z;
+    var along = (s.axis === 'x') ? player.pos.z : player.pos.x;
+    var alongVel = (s.axis === 'x') ? player.vel.z : player.vel.x;
+    if(Math.abs(coord - s.fixed) > 0.6) continue;
+    if(along < s.from - 0.3 || along > s.to + 0.3) continue;
+    if(feet < s.yBot - 0.2 || feet > s.yTop + 0.2) continue;
+    if(Math.abs(alongVel) < 3) continue;
+    return s;
+  }
+  return null;
+}
+function segStillValid(s){
+  var coord = (s.axis === 'x') ? player.pos.x : player.pos.z;
+  var along = (s.axis === 'x') ? player.pos.z : player.pos.x;
+  var feet = player.pos.y - player.eye;
+  return Math.abs(coord - s.fixed) < 0.85 &&
+    along >= s.from - 0.5 && along <= s.to + 0.5 &&
+    feet >= s.yBot - 0.4 && feet <= s.yTop + 0.4;
+}
+function wallTiltFor(seg){
+  var fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+  var tx = (seg.axis === 'x') ? -seg.normal : 0;
+  var tz = (seg.axis === 'z') ? -seg.normal : 0;
+  var side = fz * tx - fx * tz;
+  return clamp(side, -1, 1) * 0.15;
+}
+function computeGroundY(x, z, prevFeet){
+  var g = 0;
+  for(var i=0;i<crates.length;i++){
+    var c = crates[i];
+    if(x > c.minx - 0.25 && x < c.maxx + 0.25 && z > c.minz - 0.25 && z < c.maxz + 0.25){
+      if(c.h <= prevFeet + 0.6 && c.h > g){ g = c.h; }
+    }
+  }
+  return g;
+}
+function pointInTallCrate(x, z){
+  for(var i=0;i<crates.length;i++){
+    var c = crates[i];
+    if(c.h >= 2 && x > c.minx && x < c.maxx && z > c.minz && z < c.maxz){ return true; }
+  }
+  return false;
 }
 
 /* ---------------- Arena player movement ---------------- */
 function collideCrates(){
   var r = player.radius;
+  var feet = player.pos.y - player.eye;
   for(var i=0;i<crates.length;i++){
     var c = crates[i];
+    if(feet >= c.h - 0.5){ continue; }
     var cx = clamp(player.pos.x, c.minx, c.maxx);
     var cz = clamp(player.pos.z, c.minz, c.maxz);
     var dx = player.pos.x - cx, dz = player.pos.z - cz;
@@ -2667,26 +2833,93 @@ function updatePlayer(dt){
   player.vel.x = mx * sp;
   player.vel.z = mz * sp;
 
-  if((keys['Space'] || touch.jumpHeld) && Math.abs(player.pos.y - player.eye) < 0.01){
+  // wall running against the arena boundary walls
+  if(wallRun.cool > 0) wallRun.cool -= dt;
+  if(!player.grounded){
+    if(wallRun.active){
+      if(!segStillValid(wallRun.seg) || wallRun.t > 3.5){ wallRun.active = false; }
+      else {
+        wallRun.t += dt;
+        if(wallRun.seg.axis === 'x') player.vel.x = 0; else player.vel.z = 0;
+      }
+    }
+    if(!wallRun.active && wallRun.cool <= 0){
+      var seg = findWallSeg(ARENA_WALLS);
+      if(seg && player.vel.y < 3){
+        wallRun.active = true; wallRun.seg = seg; wallRun.t = 0;
+        if(seg.axis === 'x') player.vel.x = 0; else player.vel.z = 0;
+      }
+    }
+  } else { wallRun.active = false; }
+
+  // jumping, including leaping off a wall
+  var jumpHeld = keys['Space'] || touch.jumpHeld;
+  if(jumpHeld && wallRun.active){
+    player.vel.y = 8.5;
+    if(wallRun.seg.axis === 'x') player.push.x = wallRun.seg.normal * 9;
+    else player.push.z = wallRun.seg.normal * 9;
+    wallRun.active = false; wallRun.cool = 0.3;
+    player.grounded = false;
+    sfx.jump();
+  } else if(jumpHeld && player.grounded){
     player.vel.y = 5.6;
+    player.grounded = false;
   }
-  player.vel.y -= 14.5 * dt;
-  player.pos.x += player.vel.x * dt;
-  player.pos.z += player.vel.z * dt;
+
+  var grav = wallRun.active ? 14.5 * 0.2 : 14.5;
+  player.vel.y -= grav * dt;
+  if(wallRun.active && player.vel.y < -1.2) player.vel.y = -1.2;
+
+  var prevFeet = player.pos.y - player.eye;
+  player.pos.x += (player.vel.x + player.push.x) * dt;
+  player.pos.z += (player.vel.z + player.push.z) * dt;
   player.pos.y += player.vel.y * dt;
-  if(player.pos.y < player.eye){ player.pos.y = player.eye; player.vel.y = 0; }
+  player.push.multiplyScalar(Math.max(0, 1 - dt * 3.5));
+
+  if(wallRun.active){
+    if(wallRun.seg.axis === 'x') player.pos.x = wallRun.seg.fixed;
+    else player.pos.z = wallRun.seg.fixed;
+  }
 
   player.pos.x = clamp(player.pos.x, -HALF+1, HALF-1);
   player.pos.z = clamp(player.pos.z, -HALF+1, HALF-1);
+
+  // ground: floor, crate tops, deck tops
+  var feet = player.pos.y - player.eye;
+  var groundY = computeGroundY(player.pos.x, player.pos.z, prevFeet);
+  player.grounded = false;
+  if(player.vel.y <= 0 && prevFeet >= groundY - 0.35 && feet <= groundY + 0.001){
+    player.pos.y = groundY + player.eye;
+    player.vel.y = 0;
+    player.grounded = true;
+    feet = groundY;
+  }
   collideCrates();
 
-  if(ml > 0 && player.pos.y <= player.eye + 0.01){ player.bob += dt * (sprint?13:10); }
-  var bobY = Math.sin(player.bob) * 0.045 * (ml>0?1:0);
+  // bounce pads
+  if(player.grounded && groundY === 0){
+    for(var pi=0; pi<PADS.length; pi++){
+      var pd = PADS[pi];
+      if(Math.hypot(player.pos.x - pd.x, player.pos.z - pd.z) < 1.15){
+        player.vel.y = 11.5;
+        player.grounded = false;
+        sfx.pad();
+        addShake(0.12);
+        break;
+      }
+    }
+  }
+
+  var tiltT = wallRun.active ? wallTiltFor(wallRun.seg) : 0;
+  player.tilt += (tiltT - player.tilt) * clamp(dt * 10, 0, 1);
+
+  if(ml > 0 && player.grounded){ player.bob += dt * (sprint?13:10); }
+  var bobY = Math.sin(player.bob) * 0.045 * (ml>0 && player.grounded ? 1:0);
 
   camera.position.set(player.pos.x, player.pos.y + bobY, player.pos.z);
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
-  camera.rotation.z = 0;
+  camera.rotation.z = player.tilt;
 }
 
 /* ---------------- Main loop ---------------- */
