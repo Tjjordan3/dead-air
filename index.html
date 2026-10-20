@@ -190,10 +190,11 @@
   #btnSwap { right:196px; bottom:118px; width:56px; height:56px; }
   #btnTurret { right:192px; bottom:196px; width:56px; height:56px; }
   #btnPause { right:12px; top:12px; width:44px; height:44px; border-radius:10px; }
-  #rotatewarn { position:fixed; inset:0; z-index:50; display:none; align-items:center;
-    justify-content:center; background:#05070f; text-align:center; font-size:22px;
-    letter-spacing:4px; color:#fff; line-height:2; }
-  #rotatewarn span { font-size:13px; color:#5ee9ff; letter-spacing:2px; }
+  #rotatewarn { position:fixed; top:0; left:0; right:0; z-index:50; display:none;
+    align-items:center; justify-content:center; background:rgba(5,7,15,0.88);
+    text-align:center; font-size:15px; letter-spacing:3px; color:#fff;
+    line-height:1.6; padding:10px; pointer-events:none; }
+  #rotatewarn span { font-size:11px; color:#5ee9ff; letter-spacing:2px; }
   @media (orientation:portrait) { #rotatewarn { display:flex; } }
   #topright { right:66px; }
   #ammowrap { top:104px; right:16px; bottom:auto; }
@@ -274,7 +275,7 @@
   <div class="tbtn" id="btnTurret">TRT</div>
   <div class="tbtn" id="btnPause">II</div>
 </div>
-<div id="rotatewarn"><div>ROTATE YOUR DEVICE<br><span>Dead Air plays in landscape</span></div></div>
+<div id="rotatewarn"><div>ROTATE FOR LANDSCAPE<br><span>Dead Air plays best sideways</span></div></div>
 
 <div id="spirehud">
   <div id="spiretl">
