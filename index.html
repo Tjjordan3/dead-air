@@ -138,8 +138,11 @@
 
   /* ---------- Overlays ---------- */
   .overlay { position:fixed; inset:0; z-index:10; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; text-align:center;
+    align-items:center; justify-content:flex-start; text-align:center; overflow-y:auto;
     background:rgba(4,6,14,0.82); backdrop-filter:blur(4px); cursor:pointer; padding:20px; }
+  .overlay > * { flex-shrink:0; }
+  .overlay > :first-child { margin-top:auto; }
+  .overlay > :last-child { margin-bottom:auto; }
   .overlay h1 { font-size:64px; font-weight:800; letter-spacing:10px; color:#fff;
     text-shadow:0 0 30px #22d3ee, 0 0 90px #22d3ee; margin-bottom:10px; }
   .overlay h2 { font-size:15px; letter-spacing:5px; color:#5ee9ff; font-weight:400; margin-bottom:22px; }
@@ -196,6 +199,20 @@
     line-height:1.6; padding:10px; pointer-events:none; }
   #rotatewarn span { font-size:11px; color:#5ee9ff; letter-spacing:2px; }
   @media (orientation:portrait) { #rotatewarn { display:flex; } }
+  @media (orientation:landscape) and (max-height:540px) {
+    .overlay { padding:8px 4vw; }
+    .overlay h1 { font-size:30px; letter-spacing:6px; margin-bottom:2px; }
+    .overlay h2 { font-size:11px; letter-spacing:3px; margin-bottom:8px; }
+    .story { font-size:12px; line-height:1.5; margin-bottom:8px; max-width:760px; }
+    .divider { margin:8px 0; font-size:11px; }
+    .controls { grid-template-columns:auto auto auto auto; gap:4px 14px;
+      font-size:11.5px; margin-bottom:12px; }
+    .bigbtn { padding:10px 22px; font-size:14px; letter-spacing:2px; margin-top:6px; }
+    .note { margin-top:8px; font-size:10.5px; line-height:1.5; }
+    .small { font-size:11px; margin-top:6px; }
+    .shop { max-height:52vh; }
+    .shoprow { padding:6px 10px; font-size:12px; }
+  }
   #topright { right:66px; }
   #ammowrap { top:104px; right:16px; bottom:auto; }
   #swaphint { display:none; }
@@ -879,8 +896,8 @@ function setupTouch(){
       var t = e.changedTouches[i];
       if(t.identifier !== touch.lookId){ continue; }
       if(G.state === 'playing'){
-        player.yaw -= (t.clientX - touch.lookX) * 0.0045;
-        player.pitch = clamp(player.pitch - (t.clientY - touch.lookY) * 0.0045, -1.45, 1.45);
+        player.yaw -= (t.clientX - touch.lookX) * 0.0032;
+        player.pitch = clamp(player.pitch - (t.clientY - touch.lookY) * 0.0032, -1.45, 1.45);
       }
       touch.lookX = t.clientX; touch.lookY = t.clientY;
     }
@@ -1911,7 +1928,7 @@ function firePierce(w, dmg){
 }
 function tryFire(t){
   var w = wpn();
-  if(G.state !== 'playing' || !locked || G.mode !== 'arena') return;
+  if(G.state !== 'playing' || (!locked && !IS_TOUCH) || G.mode !== 'arena') return;
   if(WP.reloading) return;
   var rate = w.fireRate * (G.fx.rapid > 0 ? 0.55 : 1);
   if(t - WP.lastShot < rate) return;
@@ -2024,7 +2041,7 @@ function updateRockets(dt){
 }
 var grenGeo = new THREE.SphereGeometry(0.13, 10, 10);
 function throwGrenade(){
-  if(G.state !== 'playing' || !locked || G.mode !== 'arena') return;
+  if(G.state !== 'playing' || (!locked && !IS_TOUCH) || G.mode !== 'arena') return;
   if(G.grenades <= 0){ sfx.empty(); return; }
   G.grenades--;
   setGrenades();
@@ -2614,13 +2631,18 @@ function updateSpire(dt){
 function updateSpirePlayer(dt){
   var f = (keys['KeyW']?1:0) - (keys['KeyS']?1:0);
   var s = (keys['KeyD']?1:0) - (keys['KeyA']?1:0);
+  if(IS_TOUCH && touch.joyId !== null){
+    var jx = touch.joyDX / 48, jy = touch.joyDY / 48;
+    if(Math.hypot(jx, jy) > 0.16){ s = clamp(jx, -1, 1); f = clamp(-jy, -1, 1); }
+    else { f = 0; s = 0; }
+  }
   var sprint = keys['ShiftLeft'] || keys['ShiftRight'];
   var sp = sprint ? 12.5 : 8.5;
   var sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
   var wx = (-sin)*f + cos*s;
   var wz = (-cos)*f + (-sin)*s;
   var wl = Math.hypot(wx, wz);
-  if(wl > 0){ wx /= wl; wz /= wl; }
+  if(wl > 1){ wx /= wl; wz /= wl; }
   var k = clamp((SP.grounded ? 12 : 3.5) * dt, 0, 1);
   player.vel.x += (wx * sp - player.vel.x) * k;
   player.vel.z += (wz * sp - player.vel.z) * k;
@@ -2823,13 +2845,18 @@ function collideCrates(){
 function updatePlayer(dt){
   var f = (keys['KeyW']?1:0) - (keys['KeyS']?1:0);
   var s = (keys['KeyD']?1:0) - (keys['KeyA']?1:0);
+  if(IS_TOUCH && touch.joyId !== null){
+    var jx = touch.joyDX / 48, jy = touch.joyDY / 48;
+    if(Math.hypot(jx, jy) > 0.16){ s = clamp(jx, -1, 1); f = clamp(-jy, -1, 1); }
+    else { f = 0; s = 0; }
+  }
   var sprint = keys['ShiftLeft'] || keys['ShiftRight'];
   var sp = (sprint ? 12.5 : 8) * (1 + G.speedTier * 0.12) * (G.fx.surge > 0 ? 1.4 : 1);
   var sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
   var mx = (-sin)*f + cos*s;
   var mz = (-cos)*f + (-sin)*s;
   var ml = Math.hypot(mx, mz);
-  if(ml > 0){ mx/=ml; mz/=ml; }
+  if(ml > 1){ mx/=ml; mz/=ml; }
   player.vel.x = mx * sp;
   player.vel.z = mz * sp;
 
