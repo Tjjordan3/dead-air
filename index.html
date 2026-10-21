@@ -212,6 +212,8 @@
     .small { font-size:11px; margin-top:6px; }
     .shop { max-height:52vh; }
     .shoprow { padding:6px 10px; font-size:12px; }
+    .fovrow { margin-bottom:6px; font-size:11px; }
+    .lvlrow { margin-top:6px; font-size:12px; }
   }
   #topright { right:66px; }
   #ammowrap { top:104px; right:16px; bottom:auto; }
@@ -229,6 +231,14 @@
   .controls { font-size:12px; }
   .bigbtn { padding:16px 28px; font-size:15px; }
   #shopitems { grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
+  .fovrow { display:flex; align-items:center; gap:12px; margin-bottom:16px;
+    font-size:12px; letter-spacing:2px; color:#5ee9ff; }
+  .fovrow input[type=range] { width:190px; accent-color:#22d3ee; }
+  .lvlrow { display:flex; align-items:center; gap:14px; margin-top:14px;
+    font-size:13px; letter-spacing:2px; color:#ffd28a; }
+  .lvlbtn { background:rgba(10,16,32,0.6); border:1px solid rgba(94,233,255,0.6);
+    color:#bffcff; font-size:13px; padding:6px 13px; cursor:pointer; border-radius:4px; }
+  .lvlbtn:active { background:rgba(94,233,255,0.35); }
 </style>
 </head>
 <body>
@@ -327,8 +337,10 @@
     <b>WALL RUN</b><span>jump by a wall, keep moving</span>
   </div>
   <div class="menubtns">
-    <button class="bigbtn" id="arenabtn">ENTER THE ARENA</button>
+    <div class="fovrow"><span>FIELD OF VIEW</span><input type="range" id="fovslider" min="60" max="110" step="1" value="85"><span id="fovval">85</span></div>
+  <button class="bigbtn" id="arenabtn">ENTER THE ARENA</button>
     <button class="bigbtn alt" id="spirebtn">CLIMB THE SPIRE</button>
+    <div class="lvlrow"><button class="lvlbtn" id="spireprev">&#9664;</button><span id="spirelvl">SECTOR 1: FIRST LIGHT</span><button class="lvlbtn" id="spirenext">&#9654;</button></div>
   </div>
   <div class="note">Landscape mode recommended. Also playable on desktop with keyboard and mouse.</div>
 </div>
@@ -336,6 +348,7 @@
 <div id="pausemenu" class="overlay">
   <h1>PAUSED</h1>
   <h2>CLICK TO JUMP BACK IN</h2>
+  <div class="fovrow"><span>FIELD OF VIEW</span><input type="range" id="fovslider2" min="60" max="110" step="1" value="85"><span id="fovval2">85</span></div>
   <button class="bigbtn" id="resumebtn">RESUME</button>
   <div style="height:14px"></div>
   <button class="bigbtn alt" id="quitbtn">QUIT TO MENU</button>
@@ -466,6 +479,10 @@ scene.fog = new THREE.Fog(0x05070f, 32, 95);
 
 var camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 220);
 camera.rotation.order = 'YXZ';
+var FOV = 85;
+try { var sfov = parseInt(localStorage.getItem('deadAirFov')); if(sfov >= 60 && sfov <= 110){ FOV = sfov; } } catch(e){}
+camera.fov = FOV;
+camera.updateProjectionMatrix();
 scene.add(camera);
 
 scene.add(new THREE.HemisphereLight(0x8a9bff, 0x05060c, 0.65));
@@ -1050,6 +1067,42 @@ window.addEventListener('resize', function(){
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+/* ---------------- Settings: FOV slider and spire sector select ---------------- */
+var spireStartLevel = 0;
+function setFov(v){
+  FOV = clamp(Math.round(v), 60, 110);
+  camera.fov = FOV;
+  camera.updateProjectionMatrix();
+  try { localStorage.setItem('deadAirFov', '' + FOV); } catch(e){}
+  ['fovslider','fovslider2'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el){ el.value = FOV; }
+  });
+  ['fovval','fovval2'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el){ el.textContent = FOV; }
+  });
+}
+function syncSpireLvlLabel(){
+  $('spirelvl').textContent = 'SECTOR ' + (spireStartLevel+1) + ': ' + SPIRE_LEVELS[spireStartLevel].name;
+}
+['fovslider','fovslider2'].forEach(function(id){
+  var el = document.getElementById(id);
+  if(el){ el.addEventListener('input', function(){ setFov(parseInt(el.value)); }); }
+});
+$('spireprev').addEventListener('click', function(e){
+  e.stopPropagation();
+  spireStartLevel = (spireStartLevel + SPIRE_LEVELS.length - 1) % SPIRE_LEVELS.length;
+  syncSpireLvlLabel();
+});
+$('spirenext').addEventListener('click', function(e){
+  e.stopPropagation();
+  spireStartLevel = (spireStartLevel + 1) % SPIRE_LEVELS.length;
+  syncSpireLvlLabel();
+});
+setFov(FOV);
+syncSpireLvlLabel();
 function quitToMenu(){
   G.state = 'menu';
   G.firing = false;
@@ -2460,7 +2513,42 @@ var SPIRE_LEVELS = [
     [0,3.2,-48, 4,4, 0],
     [0,3.2,-53, 3,3, 2],
     [0,7.5,-57, 4,4, 5]
-  ], shards:[[2.2,4.2,-20],[-2.2,4.8,-38],[0,9.2,-57]] }
+  ], shards:[[2.2,4.2,-20],[-2.2,4.8,-38],[0,9.2,-57]] },
+  { name:'LONG HAUL', plats:[
+    [0,0,0, 5,5, 0],
+    [0,1,-8, 3,3, 0],
+    [0,2,-15, 3,3, 1, 'x', 3.5],
+    [5.5,3,-22, 3,3, 0],
+    [5.5,3.5,-29, 4,4, 4],
+    [1,3,-35, 3,3, 0],
+    [-1.5,3,-44, 1,14, 6, 5],
+    [-3.5,3.6,-53, 3.5,3.5, 0],
+    [-3.5,3.6,-58, 3,3, 2],
+    [-3.5,7.8,-63, 3.5,3.5, 0],
+    [-3.5,8.2,-70, 4,4, 4],
+    [-3.5,8.2,-76, 2.5,2.5, 3],
+    [-2.5,8.6,-81, 2.5,2.5, 3],
+    [-4.5,9,-86, 2.5,2.5, 3],
+    [-3.5,9.4,-92, 4,4, 4],
+    [-3.5,9.4,-99, 3,3, 1, 'z', 3],
+    [-1,9.4,-108, 1,12, 6, 5],
+    [-3.5,10,-117, 4,4, 5]
+  ], shards:[[5.5,5,-22],[-0.5,5.4,-44],[-3.5,10,-63],[-2.5,10.6,-81],[-2,11.4,-108]] },
+  { name:'THE GAUNTLET', plats:[
+    [0,0,0, 5,5, 0],
+    [3.2,0,-10, 1,16, 6, 6],
+    [0,0.6,-22, 4,4, 0],
+    [-3.2,0.6,-30, 1,16, 6, 6],
+    [0,1.2,-42, 4,4, 4],
+    [2.8,1.2,-52, 1,18, 6, 6],
+    [-2.8,1.2,-58, 1,18, 6, 6],
+    [0,1.8,-71, 4,4, 4],
+    [0,1.8,-76, 3,3, 2],
+    [0,6.0,-82, 3,3, 1, 'x', 4],
+    [6.5,6.4,-88, 3,3, 0],
+    [3,6.8,-91, 2.5,2.5, 3],
+    [0,7.2,-95, 4,4, 5]
+  ], shards:[[2.25,2.4,-10],[-2.25,3,-30],[1.85,3.6,-52],[-1.85,3.6,-62],[0,8.4,-82],[0,9.2,-95]] }
 ];
 
 var PLAT_EDGE = { 0:0x22d3ee, 1:0xff4fd8, 2:0xffb020, 3:0xc060ff, 4:0x39ff6a, 5:0xffd28a, 6:0xff8850 };
@@ -2581,7 +2669,7 @@ function initSpireRun(){
   SP.grounded = false; SP.standPlat = null;
   spiredeaths.textContent = '0';
   spiretime.textContent = '0:00';
-  loadSpireLevel(0);
+  loadSpireLevel(spireStartLevel);
 }
 function updateSpire(dt){
   SP.time += dt;
